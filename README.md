@@ -26,11 +26,23 @@ Transform your Kanboard into an AI-powered project management powerhouse! This p
 | `get_projects` | List all projects | *"Show me all projects"* |
 | `create_project` | Create new projects | *"Create a new project called Mobile App"* |
 | `get_tasks` | Get project tasks | *"List all tasks in the Marketing project"* |
-| `create_task` | Create new tasks | *"Add a task to implement user authentication"* |
-| `update_task` | Modify existing tasks | *"Update the login task description"* |
+| `create_task` | Create new tasks, optionally with color, complexity, time, priority and category | *"Add a purple task to implement user authentication, estimated 4 hours"* |
+| `update_task` | Modify existing tasks (only provided fields change) | *"Set the login task to priority 2 and complexity 5"* |
 | `delete_task` | Remove tasks | *"Delete the obsolete testing task"* |
 | `get_task_details` | Get detailed task info | *"Show me full details for task #123"* |
 | `move_task` | Move tasks between columns | *"Move the API task to Done column"* |
+
+#### Task fields for `create_task` / `update_task`
+Besides `title`, `description` and `column_id`, both tools accept these optional arguments. Omitted arguments are left unchanged. Invalid values return a tool error that explains the problem.
+
+| Argument | Type | Rules |
+|----------|------|-------|
+| `color_id` | string | A Kanboard color id, e.g. `yellow`, `blue`, `green`, `purple`, `red`, `orange`, `grey`. The error message lists the valid ids. |
+| `score` | integer | Complexity; any integer >= 0 |
+| `time_estimated` | number | Hours, >= 0 |
+| `time_spent` | number | Hours, >= 0 |
+| `priority` | integer | Must be within the project's priority range (Kanboard default 0-3) |
+| `category_id` | integer | A category of the task's project; `0` removes the category |
 
 ### Column Management (4 Tools)
 | Tool | Description | Example Usage |

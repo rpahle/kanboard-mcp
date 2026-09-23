@@ -194,29 +194,29 @@ class McpServer extends Base
             ],
             [
                 'name' => 'create_task',
-                'description' => 'Create a new task',
+                'description' => 'Create a new task. Optionally set color, complexity (score), time estimate/spent, priority and category.',
                 'inputSchema' => [
                     'type' => 'object',
-                    'properties' => [
+                    'properties' => array_merge([
                         'project_id' => ['type' => 'integer', 'description' => 'Project ID'],
                         'title' => ['type' => 'string', 'description' => 'Task title'],
                         'description' => ['type' => 'string', 'description' => 'Task description'],
                         'column_id' => ['type' => 'integer', 'description' => 'Column ID']
-                    ],
+                    ], $this->getTaskFieldSchemaProperties()),
                     'required' => ['project_id', 'title']
                 ]
             ],
             [
                 'name' => 'update_task',
-                'description' => 'Update an existing task',
+                'description' => 'Update an existing task. Only the fields provided are changed; optionally set color, complexity (score), time estimate/spent, priority and category.',
                 'inputSchema' => [
                     'type' => 'object',
-                    'properties' => [
+                    'properties' => array_merge([
                         'task_id' => ['type' => 'integer', 'description' => 'Task ID'],
                         'title' => ['type' => 'string', 'description' => 'Task title'],
                         'description' => ['type' => 'string', 'description' => 'Task description'],
                         'column_id' => ['type' => 'integer', 'description' => 'Column ID']
-                    ],
+                    ], $this->getTaskFieldSchemaProperties()),
                     'required' => ['task_id']
                 ]
             ],
@@ -564,6 +564,16 @@ class McpServer extends Base
                     if (isset($arguments['column_id'])) {
                         $taskData['column_id'] = (int) $arguments['column_id'];
                     }
+
+                    try {
+                        $taskData += $this->sanitizeTaskFieldArguments(
+                            $arguments,
+                            static fn(): int => (int) $arguments['project_id']
+                        );
+                    } catch (InvalidArgumentException $exception) {
+                        return $this->createToolExecutionErrorResponse('Invalid arguments: ' . $exception->getMessage(), $id);
+                    }
+
                     $taskId = $this->container['taskCreationModel']->create($taskData);
                     $result = ['task_id' => $taskId];
                     break;
@@ -577,7 +587,22 @@ class McpServer extends Base
                     if (isset($arguments['title'])) $taskData['title'] = $arguments['title'];
                     if (isset($arguments['description'])) $taskData['description'] = $arguments['description'];
                     if (isset($arguments['column_id'])) $taskData['column_id'] = $arguments['column_id'];
-                    
+
+                    try {
+                        $taskData += $this->sanitizeTaskFieldArguments(
+                            $arguments,
+                            function () use ($arguments): int {
+                                $projectId = (int) $this->container['taskFinderModel']->getProjectId((int) $arguments['task_id']);
+                                if ($projectId <= 0) {
+                                    throw new InvalidArgumentException('task not found');
+                                }
+                                return $projectId;
+                            }
+                        );
+                    } catch (InvalidArgumentException $exception) {
+                        return $this->createToolExecutionErrorResponse('Invalid arguments: ' . $exception->getMessage(), $id);
+                    }
+
                     $updateResult = $this->container['taskModificationModel']->update($taskData);
                     $result = ['success' => $updateResult];
                     break;
@@ -1204,6 +1229,119 @@ class McpServer extends Base
     }
 
     /**
+     * Optional task fields shared by create_task and update_task
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function getTaskFieldSchemaProperties(): array
+    {
+        return [
+            'color_id' => ['type' => 'string', 'description' => 'Task color id, e.g. yellow, blue, green, purple, red, orange, grey (validated against the Kanboard color list)'],
+            'score' => ['type' => 'integer', 'minimum' => 0, 'description' => 'Complexity (story points, integer >= 0)'],
+            'time_estimated' => ['type' => 'number', 'minimum' => 0, 'description' => 'Estimated time in hours'],
+            'time_spent' => ['type' => 'number', 'minimum' => 0, 'description' => 'Time spent in hours'],
+            'priority' => ['type' => 'integer', 'description' => 'Priority, must be within the project priority range (Kanboard default 0-3)'],
+            'category_id' => ['type' => 'integer', 'minimum' => 0, 'description' => 'Category ID of the task project (0 = no category)'],
+        ];
+    }
+
+    /**
+     * Validate and cast the optional task fields. Only keys present in $arguments are returned.
+     *
+     * @param array<string, mixed> $arguments
+     * @param callable(): int $getProjectId Resolves the task project; only called when needed
+     * @return array<string, mixed>
+     */
+    private function sanitizeTaskFieldArguments(array $arguments, callable $getProjectId): array
+    {
+        $taskData = [];
+        $projectId = null;
+        $resolveProjectId = static function () use (&$projectId, $getProjectId): int {
+            return $projectId ??= $getProjectId();
+        };
+
+        if (array_key_exists('color_id', $arguments)) {
+            $colors = $this->container['colorModel']->getList();
+
+            if (!is_string($arguments['color_id']) || !array_key_exists($arguments['color_id'], $colors)) {
+                throw new InvalidArgumentException(
+                    'color_id must be one of: ' . implode(', ', array_keys($colors))
+                );
+            }
+
+            $taskData['color_id'] = $arguments['color_id'];
+        }
+
+        if (array_key_exists('score', $arguments)) {
+            $score = $this->filterInteger($arguments['score']);
+
+            if ($score === null || $score < 0) {
+                throw new InvalidArgumentException('score must be an integer >= 0');
+            }
+
+            $taskData['score'] = $score;
+        }
+
+        foreach (['time_estimated', 'time_spent'] as $key) {
+            if (array_key_exists($key, $arguments)) {
+                $hours = $this->filterNumber($arguments[$key]);
+
+                if ($hours === null || $hours < 0) {
+                    throw new InvalidArgumentException($key . ' must be a number >= 0 (hours)');
+                }
+
+                $taskData[$key] = $hours;
+            }
+        }
+
+        if (array_key_exists('priority', $arguments)) {
+            $priority = $this->filterInteger($arguments['priority']);
+
+            if ($priority === null) {
+                throw new InvalidArgumentException('priority must be an integer');
+            }
+
+            $project = $this->container['projectModel']->getById($resolveProjectId());
+
+            if (empty($project)) {
+                throw new InvalidArgumentException('project not found');
+            }
+
+            $start = isset($project['priority_start']) ? (int) $project['priority_start'] : 0;
+            $end = isset($project['priority_end']) ? (int) $project['priority_end'] : 3;
+            $min = min($start, $end);
+            $max = max($start, $end);
+
+            if ($priority < $min || $priority > $max) {
+                throw new InvalidArgumentException(sprintf(
+                    'priority must be between %d and %d for this project',
+                    $min,
+                    $max
+                ));
+            }
+
+            $taskData['priority'] = $priority;
+        }
+
+        if (array_key_exists('category_id', $arguments)) {
+            $categoryId = $this->filterInteger($arguments['category_id']);
+
+            if ($categoryId === null || $categoryId < 0) {
+                throw new InvalidArgumentException('category_id must be an integer >= 0');
+            }
+
+            if ($categoryId > 0
+                && (int) $this->container['categoryModel']->getProjectId($categoryId) !== $resolveProjectId()) {
+                throw new InvalidArgumentException('category_id does not belong to the task project');
+            }
+
+            $taskData['category_id'] = $categoryId;
+        }
+
+        return $taskData;
+    }
+
+    /**
      * @param ColumnModel|object $columnModel
      * @return array<int,int>
      */
@@ -1253,6 +1391,40 @@ class McpServer extends Base
             }
 
             return null;
+        }
+
+        return null;
+    }
+
+    private function filterInteger(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (is_float($value)) {
+            return is_finite($value) && floor($value) === $value ? (int) $value : null;
+        }
+
+        if (is_string($value)) {
+            $filtered = filter_var(trim($value), FILTER_VALIDATE_INT);
+
+            return $filtered !== false ? (int) $filtered : null;
+        }
+
+        return null;
+    }
+
+    private function filterNumber(mixed $value): ?float
+    {
+        if (is_int($value) || is_float($value)) {
+            return is_finite((float) $value) ? (float) $value : null;
+        }
+
+        if (is_string($value) && is_numeric(trim($value))) {
+            $number = (float) trim($value);
+
+            return is_finite($number) ? $number : null;
         }
 
         return null;
