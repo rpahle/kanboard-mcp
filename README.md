@@ -10,7 +10,7 @@ Transform your Kanboard into an AI-powered project management powerhouse! This p
 
 ## Features
 
-- **Complete Enterprise Control**: 26 powerful tools covering every aspect of project management
+- **Complete Enterprise Control**: 34 powerful tools covering every aspect of project management
 - **Secure Token Authentication**: Enterprise-grade security with token-based access
 - **AI Assistant Ready**: Optimized for Cursor, Claude, and other AI development tools
 - **Full CRUD Operations**: Create, read, update, and delete across all Kanboard entities
@@ -18,7 +18,7 @@ Transform your Kanboard into an AI-powered project management powerhouse! This p
 - **Real-time Operations**: Instant project updates through natural language
 - **JSON-RPC 2.0 Compliant**: Fully compliant with MCP specification v2025-11-25
 
-## Complete Tool Suite (26 Tools)
+## Complete Tool Suite (34 Tools)
 
 ### Project & Task Management (8 Tools)
 | Tool | Description | Example Usage |
@@ -56,6 +56,20 @@ Transform your Kanboard into an AI-powered project management powerhouse! This p
 | `create_swimlane` | Add team swimlanes | *"Create a Frontend Team swimlane"* |
 | `update_swimlane` | Modify swimlanes | *"Rename Mobile Team to Cross-Platform Team"* |
 | `delete_swimlane` | Remove swimlanes | *"Delete the inactive team swimlane"* |
+
+### Tag Management (8 Tools)
+| Tool | Description | Example Usage |
+|------|-------------|---------------|
+| `get_tags` | List project + global tags (or all tags) | *"What tags exist in this project?"* |
+| `create_tag` | Add a project or global tag | *"Create a @multi-session tag"* |
+| `update_tag` | Rename or recolor a tag | *"Make the urgent tag red"* |
+| `delete_tag` | Remove a tag | *"Delete the obsolete tag"* |
+| `get_task_tags` | Get tags on a task | *"What tags does task #123 have?"* |
+| `set_task_tags` | Replace a task's tags | *"Tag task #123 with backend and api only"* |
+| `add_task_tags` | Add tags, keeping existing ones | *"Add @multi-session to task #123"* |
+| `remove_task_tags` | Remove tags from a task | *"Untag blocked from task #123"* |
+
+`get_task_details` also includes the task's tags.
 
 ### User & Assignment Management (6 Tools)
 | Tool | Description | Example Usage |
@@ -182,7 +196,7 @@ We welcome contributions! Please read our contributing guidelines and submit pul
 ## Changelog
 
 ### v1.0.0 (Initial Release)
-- **26 Complete Tools**: Full project management suite
+- **34 Complete Tools**: Full project management suite
 - **Administrative Controls**: Column, category, and swimlane management  
 - **Enterprise Security**: Enhanced token management
 - **AI Assistant Optimization**: Optimized for Cursor and Claude
