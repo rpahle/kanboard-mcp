@@ -126,7 +126,7 @@ class McpServer extends Base
                         'version' => '1.0.0',
                         'description' => 'Kanboard project-management tools and resources via MCP.',
                     ],
-                    'instructions' => 'Use the available Kanboard tools to manage projects, tasks, columns, categories, and swimlanes.',
+                    'instructions' => 'Use the available Kanboard tools to manage projects, tasks, columns, categories, swimlanes, and tags.',
                 ]
             ];
         } catch (Throwable $exception) {
@@ -472,9 +472,104 @@ class McpServer extends Base
                     ],
                     'required' => ['project_id']
                 ]
+            ],
+            // Tag Management
+            [
+                'name' => 'get_tags',
+                'description' => 'List tags. With project_id, returns that project\'s tags plus global tags; without it, returns every tag',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'project_id' => ['type' => 'integer', 'description' => 'Project ID (optional)']
+                    ]
+                ]
+            ],
+            [
+                'name' => 'create_tag',
+                'description' => 'Create a tag in a project, or a global tag when project_id is 0',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'project_id' => ['type' => 'integer', 'description' => 'Project ID (0 for a global tag)'],
+                        'name' => ['type' => 'string', 'description' => 'Tag name'],
+                        'color_id' => ['type' => 'string', 'description' => 'Color ID, e.g. yellow, blue, green, red (optional)']
+                    ],
+                    'required' => ['project_id', 'name']
+                ]
+            ],
+            [
+                'name' => 'update_tag',
+                'description' => 'Rename a tag or change its color',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'tag_id' => ['type' => 'integer', 'description' => 'Tag ID'],
+                        'name' => ['type' => 'string', 'description' => 'Tag name'],
+                        'color_id' => ['type' => 'string', 'description' => 'Color ID, e.g. yellow, blue, green, red']
+                    ],
+                    'required' => ['tag_id']
+                ]
+            ],
+            [
+                'name' => 'delete_tag',
+                'description' => 'Delete a tag (removes it from all tasks)',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'tag_id' => ['type' => 'integer', 'description' => 'Tag ID']
+                    ],
+                    'required' => ['tag_id']
+                ]
+            ],
+            [
+                'name' => 'get_task_tags',
+                'description' => 'Get the tags attached to a task',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'task_id' => ['type' => 'integer', 'description' => 'Task ID']
+                    ],
+                    'required' => ['task_id']
+                ]
+            ],
+            [
+                'name' => 'set_task_tags',
+                'description' => 'Replace all tags on a task with the given tag names (missing tags are created in the task\'s project; an empty list clears all tags)',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'task_id' => ['type' => 'integer', 'description' => 'Task ID'],
+                        'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Tag names']
+                    ],
+                    'required' => ['task_id', 'tags']
+                ]
+            ],
+            [
+                'name' => 'add_task_tags',
+                'description' => 'Add tags to a task, keeping its existing tags (missing tags are created in the task\'s project)',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'task_id' => ['type' => 'integer', 'description' => 'Task ID'],
+                        'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Tag names to add']
+                    ],
+                    'required' => ['task_id', 'tags']
+                ]
+            ],
+            [
+                'name' => 'remove_task_tags',
+                'description' => 'Remove tags from a task by name (the tags themselves are not deleted)',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'task_id' => ['type' => 'integer', 'description' => 'Task ID'],
+                        'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Tag names to remove']
+                    ],
+                    'required' => ['task_id', 'tags']
+                ]
             ]
         ];
-        
+
         return [
             'jsonrpc' => '2.0',
             'id' => $id,
@@ -643,6 +738,9 @@ class McpServer extends Base
                     }
                     
                     $task = $this->container['taskFinderModel']->getById($arguments['task_id']);
+                    if (!empty($task)) {
+                        $task['tags'] = array_values($this->container['taskTagModel']->getTagsByTask((int) $arguments['task_id']));
+                    }
                     $result = $task;
                     break;
 
@@ -846,7 +944,82 @@ class McpServer extends Base
                     $swimlanes = $this->container['swimlaneModel']->getAll($arguments['project_id']);
                     $result = array_values($swimlanes);
                     break;
-                    
+
+                // Tag Management
+                case 'get_tags':
+                    if (isset($arguments['project_id'])) {
+                        if ((int) $arguments['project_id'] <= 0) {
+                            return $this->createToolExecutionErrorResponse('Invalid arguments: project_id must be a positive integer', $id);
+                        }
+                        $tags = $this->container['tagModel']->getAllByProjectIds([(int) $arguments['project_id']]);
+                    } else {
+                        $tags = $this->container['tagModel']->getAll();
+                    }
+                    $result = array_values($tags);
+                    break;
+
+                case 'create_tag':
+                    if (!isset($arguments['project_id']) || (int) $arguments['project_id'] < 0 || !isset($arguments['name']) || !is_string($arguments['name']) || trim($arguments['name']) === '') {
+                        return $this->createToolExecutionErrorResponse('Invalid arguments: project_id must be a non-negative integer and name must be a non-empty string', $id);
+                    }
+
+                    $projectId = (int) $arguments['project_id'];
+                    $name = trim($arguments['name']);
+                    if ($this->container['tagModel']->exists($projectId, $name)) {
+                        return $this->createToolExecutionErrorResponse('Tag already exists: ' . $name, $id);
+                    }
+
+                    $tagId = $this->container['tagModel']->create($projectId, $name, $arguments['color_id'] ?? null);
+                    $result = ['tag_id' => $tagId];
+                    break;
+
+                case 'update_tag':
+                    if (!isset($arguments['tag_id']) || (int) $arguments['tag_id'] <= 0) {
+                        return $this->createToolExecutionErrorResponse('Invalid arguments: tag_id must be a positive integer', $id);
+                    }
+
+                    $tagId = (int) $arguments['tag_id'];
+                    $tag = $this->container['tagModel']->getById($tagId);
+                    if (empty($tag)) {
+                        return $this->createToolExecutionErrorResponse('Tag not found', $id);
+                    }
+
+                    $name = isset($arguments['name']) && is_string($arguments['name']) && trim($arguments['name']) !== ''
+                        ? trim($arguments['name'])
+                        : $tag['name'];
+                    if ($name !== $tag['name'] && $this->container['tagModel']->exists((int) $tag['project_id'], $name, $tagId)) {
+                        return $this->createToolExecutionErrorResponse('Tag already exists: ' . $name, $id);
+                    }
+
+                    // TagModel::update() overwrites color_id, so keep the current one unless a new one is given
+                    $colorId = $arguments['color_id'] ?? $tag['color_id'];
+                    $updateResult = $this->container['tagModel']->update($tagId, $name, $colorId);
+                    $result = ['success' => $updateResult];
+                    break;
+
+                case 'delete_tag':
+                    if (!isset($arguments['tag_id']) || (int) $arguments['tag_id'] <= 0) {
+                        return $this->createToolExecutionErrorResponse('Invalid arguments: tag_id must be a positive integer', $id);
+                    }
+
+                    $deleteResult = $this->container['tagModel']->remove((int) $arguments['tag_id']);
+                    $result = ['success' => $deleteResult];
+                    break;
+
+                case 'get_task_tags':
+                    if (!isset($arguments['task_id']) || (int) $arguments['task_id'] <= 0) {
+                        return $this->createToolExecutionErrorResponse('Invalid arguments: task_id must be a positive integer', $id);
+                    }
+
+                    $tags = $this->container['taskTagModel']->getTagsByTask((int) $arguments['task_id']);
+                    $result = array_values($tags);
+                    break;
+
+                case 'set_task_tags':
+                case 'add_task_tags':
+                case 'remove_task_tags':
+                    return $this->handleTaskTags($toolName, $arguments, $id);
+
                 default:
                     return $this->errorResponse(-32602, 'Unknown tool: ' . $toolName, $id);
             }
@@ -1117,6 +1290,61 @@ class McpServer extends Base
 
         // Success
         return $this->createSuccessResponse(['success' => true], $id);
+    }
+
+    /**
+     * Handle set_task_tags, add_task_tags and remove_task_tags.
+     * All three resolve to a full tag-name list saved via TaskTagModel::save(),
+     * which creates missing tags and dissociates tags not in the list.
+     */
+    private function handleTaskTags(string $toolName, array $arguments, int|string|null $id): array
+    {
+        $taskId = isset($arguments['task_id']) ? $this->filterPositiveInteger($arguments['task_id']) : null;
+        if ($taskId === null) {
+            return $this->createToolExecutionErrorResponse('Invalid arguments: task_id must be a positive integer', $id);
+        }
+
+        if (!isset($arguments['tags']) || !is_array($arguments['tags'])) {
+            return $this->createToolExecutionErrorResponse('Invalid arguments: tags must be an array of tag names', $id);
+        }
+
+        $requested = [];
+        foreach ($arguments['tags'] as $tag) {
+            if (!is_string($tag) || trim($tag) === '') {
+                return $this->createToolExecutionErrorResponse('Invalid arguments: tags must be non-empty strings', $id);
+            }
+            $requested[] = trim($tag);
+        }
+
+        $task = $this->container['taskFinderModel']->getById($taskId);
+        if (empty($task)) {
+            return $this->createToolExecutionErrorResponse('Task not found', $id);
+        }
+
+        $current = array_values($this->container['taskTagModel']->getList($taskId));
+
+        switch ($toolName) {
+            case 'add_task_tags':
+                $tags = array_merge($current, $requested);
+                break;
+            case 'remove_task_tags':
+                $toRemove = array_map('mb_strtolower', $requested);
+                $tags = array_values(array_filter(
+                    $current,
+                    static fn(string $name): bool => !in_array(mb_strtolower($name), $toRemove, true)
+                ));
+                break;
+            default:
+                $tags = $requested;
+        }
+
+        $tags = array_values(array_unique($tags));
+        $saveResult = $this->container['taskTagModel']->save((int) $task['project_id'], $taskId, $tags);
+
+        return $this->createSuccessResponse([
+            'success' => $saveResult,
+            'tags' => array_values($this->container['taskTagModel']->getTagsByTask($taskId)),
+        ], $id);
     }
 
     /**
