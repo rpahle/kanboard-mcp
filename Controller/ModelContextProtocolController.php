@@ -315,6 +315,17 @@ class ModelContextProtocolController extends Base
     }
     
     /**
+     * The token creation form (admin only). It is a page of its own because the
+     * integrations page wraps every hook in a form that saves Kanboard's settings.
+     */
+    public function newToken()
+    {
+        $this->response->html($this->helper->layout->config('ModelContextProtocol:config/token_form', [
+            'title' => t('Settings') . ' &gt; ' . t('Integrations'),
+        ]));
+    }
+
+    /**
      * Generate a new token with its scope (admin only, POST with CSRF token).
      * The token value is rendered once, in this response, and is not stored anywhere else.
      */
@@ -372,6 +383,47 @@ class ModelContextProtocolController extends Base
         ]));
     }
     
+    /**
+     * Ask for confirmation before deleting a token (admin only). Nothing is deleted here.
+     */
+    public function confirmDeleteToken()
+    {
+        $token = $this->mcpTokenModel->getSummary($this->request->getIntegerParam('token_id'));
+
+        if (empty($token)) {
+            $this->flash->failure(t('Token not found'));
+            $this->response->redirect($this->helper->url->to('ConfigController', 'integrations'));
+            return;
+        }
+
+        $this->response->html($this->helper->layout->config('ModelContextProtocol:config/token_delete', [
+            'title' => t('Settings') . ' &gt; ' . t('Integrations'),
+            'token' => $token,
+        ]));
+    }
+
+    /**
+     * Delete a token (admin only, POST with CSRF token)
+     */
+    public function deleteToken()
+    {
+        if (!$this->token->validateCSRFToken($this->request->getRawValue('csrf_token'))) {
+            throw new AccessForbiddenException();
+        }
+
+        $id = $this->request->getRawValue('token_id');
+
+        if (!is_string($id) || !ctype_digit($id) || (int) $id <= 0 || empty($this->mcpTokenModel->getSummary((int) $id))) {
+            $this->flash->failure(t('Token not found'));
+        } elseif ($this->mcpTokenModel->remove((int) $id)) {
+            $this->flash->success(t('Token deleted'));
+        } else {
+            $this->flash->failure(t('Unable to delete the token'));
+        }
+
+        $this->response->redirect($this->helper->url->to('ConfigController', 'integrations'));
+    }
+
     /**
      * Get MCP URL
      */
