@@ -31,9 +31,12 @@ class McpServer extends Base
         '2024-11-05',
     ];
 
-    public function __construct($container)
+    private ScopeGuard $scopeGuard;
+
+    public function __construct($container, ?TokenScope $scope = null)
     {
         $this->container = $container;
+        $this->scopeGuard = new ScopeGuard($container, $scope ?? TokenScope::unrestricted());
     }
     
     /**
@@ -595,6 +598,16 @@ class McpServer extends Base
         $toolName = $params['name'] ?? '';
         $arguments = $params['arguments'] ?? [];
 
+        // Token scope: runs before any handler, and refuses by default if it cannot decide
+        try {
+            $arguments = $this->scopeGuard->authorize($toolName, $arguments);
+        } catch (ScopeViolation $violation) {
+            return $this->createToolExecutionErrorResponse($violation->getMessage(), $id);
+        } catch (Throwable $exception) {
+            $this->logThrowable(sprintf('Scope check failed for %s', $toolName), $exception);
+            return $this->createToolExecutionErrorResponse(ScopeGuard::OUT_OF_SCOPE, $id);
+        }
+
         try {
             $result = null;
             
@@ -1023,9 +1036,9 @@ class McpServer extends Base
                 default:
                     return $this->errorResponse(-32602, 'Unknown tool: ' . $toolName, $id);
             }
-            
-            return $this->createSuccessResponse($result, $id);
-            
+
+            return $this->createSuccessResponse($this->scopeGuard->filterResult($toolName, $result), $id);
+
         } catch (InvalidArgumentException $exception) {
             return $this->createToolExecutionErrorResponse($exception->getMessage(), $id);
         } catch (Throwable $exception) {
@@ -1095,16 +1108,16 @@ class McpServer extends Base
         try {
             switch ($uri) {
                 case 'kanboard://projects':
-                    $projects = $this->container['projectModel']->getAll();
-                    $content = json_encode(ResponseSanitizer::sanitize(array_values($projects)), JSON_PRETTY_PRINT);
+                    $projects = $this->scopeGuard->filterProjects(array_values($this->container['projectModel']->getAll()));
+                    $content = json_encode(ResponseSanitizer::sanitize($projects), JSON_PRETTY_PRINT);
                     break;
 
                 case 'kanboard://users':
                     $users = $this->container['userModel']->getAll();
-                    $content = json_encode(
-                        ResponseSanitizer::sanitize(array_map([ResponseSanitizer::class, 'user'], array_values($users))),
-                        JSON_PRETTY_PRINT
+                    $users = $this->scopeGuard->filterUsers(
+                        array_map([ResponseSanitizer::class, 'user'], array_values($users))
                     );
+                    $content = json_encode(ResponseSanitizer::sanitize($users), JSON_PRETTY_PRINT);
                     break;
                     
                 default:

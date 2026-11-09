@@ -13,17 +13,7 @@ use Kanboard\Core\Base;
 class McpTokenModel extends Base
 {
     const TABLE = 'mcp_tokens';
-    
-    /**
-     * Get current token
-     */
-    public function getCurrentToken()
-    {
-        return $this->db->table(self::TABLE)
-            ->eq('is_active', 1)
-            ->findOneColumn('token');
-    }
-    
+
     /**
      * Validate token
      */
@@ -32,32 +22,69 @@ class McpTokenModel extends Base
         if (empty($token)) {
             return false;
         }
-        
+
         return $this->db->table(self::TABLE)
             ->eq('token', $token)
             ->eq('is_active', 1)
             ->exists();
     }
-    
+
     /**
-     * Generate new token
+     * Get the active token row, including its scope columns
+     *
+     * @return array|null
      */
-    public function generateToken()
+    public function getByToken($token)
     {
-        // Deactivate existing tokens
-        $this->db->table(self::TABLE)
-            ->update(['is_active' => 0]);
-        
-        // Generate new token
+        if (empty($token) || !is_string($token)) {
+            return null;
+        }
+
+        $row = $this->db->table(self::TABLE)
+            ->eq('token', $token)
+            ->eq('is_active', 1)
+            ->findOne();
+
+        return $row ?: null;
+    }
+
+    /**
+     * List tokens for the admin page. The token value is never selected.
+     *
+     * @return array
+     */
+    public function getAll()
+    {
+        return $this->db->table(self::TABLE)
+            ->columns('id', 'name', 'allowed_projects', 'blocked_tools', 'is_active', 'created_at')
+            ->asc('id')
+            ->findAll();
+    }
+
+    /**
+     * Create a token. A NULL scope column means unrestricted.
+     *
+     * @param  string      $name
+     * @param  string|null $allowedProjects Comma-separated project ids
+     * @param  string|null $blockedTools    Comma-separated tool names or prefixes
+     * @return string|false The new token value, returned only here so it can be shown once
+     */
+    public function create($name, $allowedProjects, $blockedTools)
+    {
         $token = bin2hex(random_bytes(32));
-        
-        return $this->db->table(self::TABLE)->persist([
+
+        $id = $this->db->table(self::TABLE)->persist([
             'token' => $token,
+            'name' => $name,
+            'allowed_projects' => $allowedProjects,
+            'blocked_tools' => $blockedTools,
             'is_active' => 1,
             'created_at' => time(),
         ]);
+
+        return $id ? $token : false;
     }
-    
+
     /**
      * Check if token exists
      */
@@ -67,4 +94,4 @@ class McpTokenModel extends Base
             ->eq('is_active', 1)
             ->exists();
     }
-} 
+}
