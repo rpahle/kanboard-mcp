@@ -158,6 +158,19 @@ The plugin works with MCP-compatible clients and negotiates protocol versions up
 - **Activity Logging**: All MCP operations are logged for audit trails
 - **Token Rotation**: Generate new tokens to revoke old access
 
+### Token scopes
+
+Each token can be limited when it is generated (**Settings** → **Integrations**):
+
+| Setting | Meaning |
+|---------|---------|
+| Allowed project ids | Comma-separated, e.g. `11,16,17,18`. Empty means the token can reach every project. |
+| Blocked tools | Comma-separated tool names. Each entry also blocks every tool whose name starts with it, so `delete_` blocks all delete tools. |
+
+For a token with allowed projects, every call is checked before it runs. The project of each `project_id`, `task_id`, `column_id`, `swimlane_id`, `category_id`, `tag_id` and `comment_id` in the call is looked up, and the call is refused with `outside token scope` unless all of them are allowed. Tools that name no project (such as `create_project`) are refused, except `get_projects`, `get_users` and `get_tags`, whose results are narrowed to the allowed projects (`get_users` returns only members of those projects). The `kanboard://projects` and `kanboard://users` resources are narrowed the same way. A blocked tool returns `tool blocked for this token`.
+
+A token value is shown once, when it is created. Tokens created before this feature keep working and stay unrestricted until replaced.
+
 ## Technical Specifications
 
 ### Requirements

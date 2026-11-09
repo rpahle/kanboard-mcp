@@ -2,7 +2,7 @@
 
 namespace Kanboard\Plugin\ModelContextProtocol\Schema;
 
-const VERSION = 1;
+const VERSION = 2;
 
 function version_1($pdo)
 {
@@ -17,4 +17,15 @@ function version_1($pdo)
     
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_mcp_token ON mcp_tokens (token)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_mcp_active ON mcp_tokens (is_active)');
-} 
+}
+
+/**
+ * Per-token scopes. NULL means unrestricted, so existing tokens keep working.
+ * Safe to run more than once: IF NOT EXISTS turns each repeated column add into a no-op.
+ */
+function version_2($pdo)
+{
+    $pdo->exec('ALTER TABLE mcp_tokens ADD COLUMN IF NOT EXISTS name VARCHAR(255) NULL');
+    $pdo->exec('ALTER TABLE mcp_tokens ADD COLUMN IF NOT EXISTS allowed_projects TEXT NULL');
+    $pdo->exec('ALTER TABLE mcp_tokens ADD COLUMN IF NOT EXISTS blocked_tools TEXT NULL');
+}
