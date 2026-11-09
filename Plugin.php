@@ -23,6 +23,9 @@ class Plugin extends Base
         
         // But require admin access for token generation
         $this->applicationAccessMap->add('ModelContextProtocolController', 'generateToken', Role::APP_ADMIN);
+        $this->applicationAccessMap->add('ModelContextProtocolController', 'newToken', Role::APP_ADMIN);
+        $this->applicationAccessMap->add('ModelContextProtocolController', 'confirmDeleteToken', Role::APP_ADMIN);
+        $this->applicationAccessMap->add('ModelContextProtocolController', 'deleteToken', Role::APP_ADMIN);
     }
 
     public function onStartup()

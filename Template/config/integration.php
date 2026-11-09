@@ -1,3 +1,8 @@
+<?php
+// This panel is rendered inside Kanboard's own integrations <form>. It must not contain
+// a <form> or any input: a nested form is dropped by the browser, and every field would be
+// posted to Kanboard's settings save. The creation form lives on its own page (token_form).
+?>
 <div class="panel">
     <h3><i class="fa fa-cog fa-fw"></i>&nbsp;<?= t('Model Context Protocol') ?></h3>
 
@@ -15,6 +20,7 @@
                 <th><?= t('Created') ?></th>
                 <th><?= t('Allowed projects') ?></th>
                 <th><?= t('Blocked tools') ?></th>
+                <th></th>
             </tr>
             <?php foreach ($tokens as $row): ?>
                 <tr>
@@ -29,35 +35,21 @@
                         <?php endif ?>
                     </td>
                     <td><?= $this->text->e($row['blocked_tools'] === null || $row['blocked_tools'] === '' ? t('None') : $row['blocked_tools']) ?></td>
+                    <td>
+                        <a href="<?= $this->url->href('ModelContextProtocolController', 'confirmDeleteToken', array('plugin' => 'ModelContextProtocol', 'token_id' => $row['id'])) ?>">
+                            <i class="fa fa-trash-o fa-fw"></i><?= t('Delete') ?>
+                        </a>
+                    </td>
                 </tr>
             <?php endforeach ?>
         </table>
     <?php endif ?>
 
-    <h4><?= t('Generate a new token') ?></h4>
-    <form method="post" autocomplete="off"
-          action="<?= $this->url->href('ModelContextProtocolController', 'generateToken', array('plugin' => 'ModelContextProtocol')) ?>">
-        <?= $this->form->csrf() ?>
-
-        <div class="form-group">
-            <label for="mcp-token-name"><?= t('Name') ?></label>
-            <input type="text" id="mcp-token-name" name="name" maxlength="255" placeholder="<?= t('e.g. Claude, read-only') ?>">
-        </div>
-
-        <div class="form-group">
-            <label for="mcp-token-projects"><?= t('Allowed project ids') ?></label>
-            <input type="text" id="mcp-token-projects" name="allowed_projects" placeholder="11,16,17,18">
-            <p class="form-help"><?= t('Comma-separated. Leave empty for a token with access to every project.') ?></p>
-        </div>
-
-        <div class="form-group">
-            <label for="mcp-token-blocked"><?= t('Blocked tools') ?></label>
-            <input type="text" id="mcp-token-blocked" name="blocked_tools" placeholder="delete_,create_project,reorder_columns">
-            <p class="form-help"><?= t('Comma-separated tool names. Each entry also blocks every tool whose name starts with it, so "delete_" blocks all delete tools.') ?></p>
-        </div>
-
-        <button type="submit" class="btn btn-blue"><?= t('Generate token') ?></button>
-    </form>
+    <p>
+        <a class="btn btn-blue" href="<?= $this->url->href('ModelContextProtocolController', 'newToken', array('plugin' => 'ModelContextProtocol')) ?>">
+            <i class="fa fa-plus fa-fw"></i><?= t('Generate a new token') ?>
+        </a>
+    </p>
 
     <div class="alert alert-info">
         <p><strong><?= t('Security Note:') ?></strong> <?= t('A token with no allowed projects has full access to your Kanboard instance. A token value is shown once, when it is created, and cannot be shown again.') ?></p>

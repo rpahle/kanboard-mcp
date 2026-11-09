@@ -62,6 +62,31 @@ class McpTokenModel extends Base
     }
 
     /**
+     * One token for the admin pages, without its value
+     *
+     * @return array|null
+     */
+    public function getSummary($id)
+    {
+        $row = $this->db->table(self::TABLE)
+            ->columns('id', 'name', 'allowed_projects', 'blocked_tools', 'is_active', 'created_at')
+            ->eq('id', (int) $id)
+            ->findOne();
+
+        return $row ?: null;
+    }
+
+    /**
+     * Delete a token. It stops authenticating immediately.
+     *
+     * @return bool
+     */
+    public function remove($id)
+    {
+        return $this->db->table(self::TABLE)->eq('id', (int) $id)->remove();
+    }
+
+    /**
      * Create a token. A NULL scope column means unrestricted.
      *
      * @param  string      $name
