@@ -792,7 +792,7 @@ class McpServer extends Base
                     
                 case 'get_users':
                     $users = $this->container['userModel']->getAll();
-                    $result = array_values($users);
+                    $result = array_map([ResponseSanitizer::class, 'user'], array_values($users));
                     break;
                     
                 case 'get_task_comments':
@@ -1096,12 +1096,15 @@ class McpServer extends Base
             switch ($uri) {
                 case 'kanboard://projects':
                     $projects = $this->container['projectModel']->getAll();
-                    $content = json_encode(array_values($projects), JSON_PRETTY_PRINT);
+                    $content = json_encode(ResponseSanitizer::sanitize(array_values($projects)), JSON_PRETTY_PRINT);
                     break;
-                    
+
                 case 'kanboard://users':
                     $users = $this->container['userModel']->getAll();
-                    $content = json_encode(array_values($users), JSON_PRETTY_PRINT);
+                    $content = json_encode(
+                        ResponseSanitizer::sanitize(array_map([ResponseSanitizer::class, 'user'], array_values($users))),
+                        JSON_PRETTY_PRINT
+                    );
                     break;
                     
                 default:
@@ -1194,7 +1197,7 @@ class McpServer extends Base
         ];
 
         if ($data !== null) {
-            $error['data'] = $data;
+            $error['data'] = ResponseSanitizer::sanitize($data);
         }
 
         return [
@@ -1230,7 +1233,7 @@ class McpServer extends Base
                 'content' => [
                     [
                         'type' => 'text',
-                        'text' => json_encode($result, JSON_PRETTY_PRINT)
+                        'text' => json_encode(ResponseSanitizer::sanitize($result), JSON_PRETTY_PRINT)
                     ]
                 ]
             ]
@@ -1661,17 +1664,17 @@ class McpServer extends Base
     private function logError(string $message, array $context = []): void
     {
         if (isset($this->container['logger'])) {
-            $this->container['logger']->error($message, $context);
+            $this->container['logger']->error($message, ResponseSanitizer::describeForLog($context));
         }
     }
 
     /**
-     * Log throwable details without exposing them to clients
+     * Log where a throwable came from, never its message or any argument values
      */
     private function logThrowable(string $message, Throwable $throwable): void
     {
         if (isset($this->container['logger'])) {
-            $this->container['logger']->error($message, ['exception' => $throwable]);
+            $this->container['logger']->error($message, ['exception' => ResponseSanitizer::describeThrowable($throwable)]);
         }
     }
 }
